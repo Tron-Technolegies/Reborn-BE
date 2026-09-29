@@ -18,6 +18,13 @@ SECRET_KEY = 'django-insecure-qo0gm7p@9u^zsq9!=$%31b839)-=8bth$k896w2=e3ip4(t8#-
 DEBUG = True
 ALLOWED_HOSTS = ['*']
 CORS_ALLOW_ALL_ORIGINS = True
+CSRF_TRUSTED_ORIGINS = [
+    'https://*.onrender.com',
+    'https://*.vercel.app',
+    'https://*.netlify.app',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+]
 
 # ── Apps ──────────────────────────────────────────────────────────────────────
 INSTALLED_APPS = [
