@@ -6,6 +6,11 @@ import os
 import sys
 from pathlib import Path
 
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
 # ── Base directory ────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -17,14 +22,35 @@ MEDIA_ROOT = str(BASE_DIR / 'media')
 SECRET_KEY = 'django-insecure-qo0gm7p@9u^zsq9!=$%31b839)-=8bth$k896w2=e3ip4(t8#-'
 DEBUG = True
 ALLOWED_HOSTS = ['*']
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
+]
+CORS_ALLOWED_ORIGIN_REGEXES = [
+    r"^https://.*\.onrender\.com$",
+    r"^https://.*\.vercel\.app$",
+    r"^https://.*\.netlify\.app$",
+]
 CSRF_TRUSTED_ORIGINS = [
     'https://*.onrender.com',
     'https://*.vercel.app',
     'https://*.netlify.app',
     'http://localhost:5173',
     'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://localhost:8000',
+    'http://127.0.0.1:8000',
 ]
+CSRF_COOKIE_HTTPONLY = False
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
 
 # ── Apps ──────────────────────────────────────────────────────────────────────
 INSTALLED_APPS = [
@@ -69,12 +95,23 @@ TEMPLATES = [
 WSGI_APPLICATION = 'perfectfitsoftware.wsgi.application'
 
 # ── Database ──────────────────────────────────────────────────────────────────
+
+
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': DB_PATH,
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("DB_NAME"),
+        "USER": os.getenv("DB_USER"),
+        "PASSWORD": os.getenv("DB_PASSWORD"),
+        "HOST": os.getenv("DB_HOST"),
+        "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
+
+print("DB_NAME:", os.getenv("DB_NAME"))
+print("DB_HOST:", os.getenv("DB_HOST"))
+print("DB_USER:", os.getenv("DB_USER"))
+print("DB_PASSWORD loaded:", bool(os.getenv("DB_PASSWORD")))
 
 # ── Media files (local storage — works offline on client machine) ─────────────
 MEDIA_URL = '/media/'

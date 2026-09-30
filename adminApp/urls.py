@@ -95,4 +95,10 @@ urlpatterns = [
     path('settings/update/', views.update_system_settings, name='update_system_settings'),
     path('settings/verify-password/', views.verify_password, name='verify_password'),
     path('payments/record/', views.record_payment, name='record_payment'),
+
+    # AUTHENTICATION
+    path('auth/login/', views.auth_login, name='auth_login'),
+    path('auth/me/', views.auth_me, name='auth_me'),
+    path('auth/logout/', views.auth_logout, name='auth_logout'),
+    path('auth/csrf/', views.auth_csrf, name='auth_csrf'),
 ]
