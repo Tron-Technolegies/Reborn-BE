@@ -2748,9 +2748,10 @@ def record_payment(request):
 # ── Authentication ────────────────────────────────────────────────────────────
 from django.contrib.auth import authenticate, login, logout
 from django.middleware.csrf import get_token
-from django.views.decorators.csrf import ensure_csrf_cookie
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods
 
+@csrf_exempt
 @require_http_methods(["POST"])
 def auth_login(request):
     try:
@@ -2807,6 +2808,7 @@ def auth_me(request):
     })
 
 
+@csrf_exempt
 @require_http_methods(["POST"])
 def auth_logout(request):
     logout(request)
@@ -2818,5 +2820,6 @@ def auth_logout(request):
 def auth_csrf(request):
     csrf_token = get_token(request)
     return JsonResponse({"success": True, "csrfToken": csrf_token})
+
 
 
