@@ -2747,6 +2747,7 @@ def record_payment(request):
 
 # ── Authentication ────────────────────────────────────────────────────────────
 from django.contrib.auth import authenticate, login, logout
+from django.middleware.csrf import get_token
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.views.decorators.http import require_http_methods
 
@@ -2787,11 +2788,12 @@ def auth_login(request):
 @ensure_csrf_cookie
 @require_http_methods(["GET"])
 def auth_me(request):
+    csrf_token = get_token(request)
     if not request.user.is_authenticated:
-        return JsonResponse({"authenticated": False, "error": "Not authenticated"}, status=401)
+        return JsonResponse({"authenticated": False, "error": "Not authenticated", "csrfToken": csrf_token}, status=401)
 
     if not request.user.is_superuser:
-        return JsonResponse({"authenticated": False, "error": "Superuser access required."}, status=403)
+        return JsonResponse({"authenticated": False, "error": "Superuser access required.", "csrfToken": csrf_token}, status=403)
 
     return JsonResponse({
         "authenticated": True,
@@ -2800,7 +2802,8 @@ def auth_me(request):
             "username": request.user.username,
             "email": request.user.email,
             "is_superuser": True,
-        }
+        },
+        "csrfToken": csrf_token,
     })
 
 
@@ -2813,5 +2816,7 @@ def auth_logout(request):
 @ensure_csrf_cookie
 @require_http_methods(["GET"])
 def auth_csrf(request):
-    return JsonResponse({"success": True})
+    csrf_token = get_token(request)
+    return JsonResponse({"success": True, "csrfToken": csrf_token})
+
 
