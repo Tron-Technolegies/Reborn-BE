@@ -2822,4 +2822,52 @@ def auth_csrf(request):
     return JsonResponse({"success": True, "csrfToken": csrf_token})
 
 
+from django.contrib.auth import update_session_auth_hash
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError
+
+@require_http_methods(["POST"])
+def auth_change_password(request):
+    if not request.user.is_authenticated:
+        return JsonResponse({"success": False, "error": "Not authenticated."}, status=401)
+
+    if not request.user.is_superuser:
+        return JsonResponse({"success": False, "error": "Superuser access required."}, status=403)
+
+    try:
+        data = json.loads(request.body)
+    except Exception:
+        return JsonResponse({"success": False, "error": "Invalid JSON body."}, status=400)
+
+    current_password = data.get("current_password", "")
+    new_password = data.get("new_password", "")
+    confirm_password = data.get("confirm_password", "")
+
+    if not current_password or not new_password or not confirm_password:
+        return JsonResponse({"success": False, "error": "All fields are required."}, status=400)
+
+    if not request.user.check_password(current_password):
+        return JsonResponse({"success": False, "error": "Current password is incorrect."}, status=400)
+
+    if new_password != confirm_password:
+        return JsonResponse({"success": False, "error": "New passwords do not match."}, status=400)
+
+    try:
+        validate_password(new_password, user=request.user)
+    except ValidationError as e:
+        return JsonResponse({"success": False, "error": " ".join(e.messages)}, status=400)
+
+    request.user.set_password(new_password)
+    request.user.save()
+
+    # Keep the user's session active after password change
+    update_session_auth_hash(request, request.user)
+
+    return JsonResponse({
+        "success": True,
+        "message": "Password changed successfully."
+    })
+
+
+
 

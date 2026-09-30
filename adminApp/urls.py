@@ -101,4 +101,5 @@ urlpatterns = [
     path('auth/me/', views.auth_me, name='auth_me'),
     path('auth/logout/', views.auth_logout, name='auth_logout'),
     path('auth/csrf/', views.auth_csrf, name='auth_csrf'),
+    path('auth/change-password/', views.auth_change_password, name='auth_change_password'),
 ]

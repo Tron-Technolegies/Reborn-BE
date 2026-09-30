@@ -107,6 +107,83 @@ assert res.status_code == 401, f"Expected 401, got {res.status_code}"
 assert res.json().get('authenticated') is False
 print("Passed: session is destroyed on backend.")
 
+# 9. Test POST /api/auth/change-password/ when unauthenticated
+print("\n9. Testing POST /api/auth/change-password/ when unauthenticated...")
+res = client.post(
+    '/api/auth/change-password/',
+    data=json.dumps({"current_password": "SuperPassword123!", "new_password": "NewPassword123!", "confirm_password": "NewPassword123!"}),
+    content_type='application/json'
+)
+assert res.status_code == 401, f"Expected 401, got {res.status_code}"
+print("Passed: change-password rejected for unauthenticated request.")
+
+# Log in as superuser for password change tests
+client.post(
+    '/api/auth/login/',
+    data=json.dumps({"username": "test_superuser", "password": "SuperPassword123!"}),
+    content_type='application/json'
+)
+
+# 10. Test POST /api/auth/change-password/ with wrong current password
+print("\n10. Testing POST /api/auth/change-password/ with wrong current password...")
+res = client.post(
+    '/api/auth/change-password/',
+    data=json.dumps({"current_password": "WrongPassword123", "new_password": "NewPassword123!", "confirm_password": "NewPassword123!"}),
+    content_type='application/json'
+)
+assert res.status_code == 400, f"Expected 400, got {res.status_code}"
+assert "Current password is incorrect." in res.json().get('error', '')
+print("Passed: wrong current password rejected.")
+
+# 11. Test POST /api/auth/change-password/ with mismatched new passwords
+print("\n11. Testing POST /api/auth/change-password/ with mismatched passwords...")
+res = client.post(
+    '/api/auth/change-password/',
+    data=json.dumps({"current_password": "SuperPassword123!", "new_password": "NewPassword123!", "confirm_password": "MismatchedPassword123!"}),
+    content_type='application/json'
+)
+assert res.status_code == 400, f"Expected 400, got {res.status_code}"
+assert "New passwords do not match." in res.json().get('error', '')
+print("Passed: mismatched passwords rejected.")
+
+# 12. Test POST /api/auth/change-password/ with valid credentials
+print("\n12. Testing POST /api/auth/change-password/ with valid credentials...")
+res = client.post(
+    '/api/auth/change-password/',
+    data=json.dumps({"current_password": "SuperPassword123!", "new_password": "NewPassword123!", "confirm_password": "NewPassword123!"}),
+    content_type='application/json'
+)
+assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+assert res.json().get('success') is True
+print("Passed: password changed successfully.")
+
+# 13. Verify session remains active after password change
+print("\n13. Testing session remains active after password change...")
+res = client.get('/api/auth/me/')
+assert res.status_code == 200, f"Expected 200, got {res.status_code}"
+assert res.json().get('authenticated') is True
+print("Passed: session remained valid after password change.")
+
+# 14. Verify old password fails and new password succeeds
+print("\n14. Testing login with old vs new password...")
+client.post('/api/auth/logout/')
+
+res_old = client.post(
+    '/api/auth/login/',
+    data=json.dumps({"username": "test_superuser", "password": "SuperPassword123!"}),
+    content_type='application/json'
+)
+assert res_old.status_code == 401, f"Expected 401 with old password, got {res_old.status_code}"
+
+res_new = client.post(
+    '/api/auth/login/',
+    data=json.dumps({"username": "test_superuser", "password": "NewPassword123!"}),
+    content_type='application/json'
+)
+assert res_new.status_code == 200, f"Expected 200 with new password, got {res_new.status_code}"
+print("Passed: old password rejected, new password accepted.")
+
 # Cleanup test users
 User.objects.filter(username__in=["test_superuser", "test_regular_user"]).delete()
-print("\nALL AUTHENTICATION TESTS PASSED SUCCESSFULLY!")
+print("\nALL AUTHENTICATION & PASSWORD CHANGE TESTS PASSED SUCCESSFULLY!")
+
