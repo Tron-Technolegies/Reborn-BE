@@ -1899,8 +1899,8 @@ def get_dashboard_stats(request):
         products = Product.objects.prefetch_related('units').all()
         total_rental_items = len(products)
         low_stock_products = sum(1 for p in products if p.available_stock <= 1)
-        active_rentals = RentalBooking.objects.filter(is_returned=False).count()
-        overdue_rentals = RentalBooking.objects.filter(is_returned=False, return_date__lt=today).count()
+        total_orders = RentalBooking.objects.count()
+        overdue_rentals = 0
         
         rental_revenue = sum(o.advance_paid for o in RentalBooking.objects.all())
         accessory_revenue = sum(s.total_price for s in AccessorySale.objects.all())
@@ -1916,7 +1916,7 @@ def get_dashboard_stats(request):
         return JsonResponse({
             "rentals": {
                 "total_items": total_rental_items,
-                "active_orders": active_rentals,
+                "active_orders": total_orders,
                 "overdue_orders": overdue_rentals,
                 "revenue": float(rental_revenue)
             },
