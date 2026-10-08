@@ -429,6 +429,8 @@ class RentalItem(models.Model):
     booking = models.ForeignKey(RentalBooking, on_delete=models.CASCADE, related_name='items')
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     unit = models.ForeignKey(PhysicalUnit, on_delete=models.SET_NULL, null=True, blank=True)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    price_adjustment_reason = models.CharField(max_length=255, blank=True, null=True)
 
     def clean(self):
         if self.unit and self.unit.status != 'available' and not self.pk and getattr(self, 'booking', None) and self.booking.status == 'ACTIVE':

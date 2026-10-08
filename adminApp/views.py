@@ -440,7 +440,10 @@ def create_rental_order(request):
                     status=400
                 )
 
-        # Validate products and quantities
+        # Validate products, quantities, and pricing
+        validated_items = []
+        total_subtotal = Decimal("0")
+
         for item_data in items_data:
             try:
                 product = Product.objects.get(
@@ -459,6 +462,34 @@ def create_rental_order(request):
                     {"error": f"Invalid quantity for {product.name}"},
                     status=400
                 )
+
+            # Custom sale price validation
+            use_custom_price = bool(item_data.get("use_custom_price", False))
+            custom_price_raw = item_data.get("custom_price")
+            price_adjustment_reason = str(item_data.get("price_adjustment_reason", "") or "").strip()
+
+            if use_custom_price:
+                if custom_price_raw is None or str(custom_price_raw).strip() == "":
+                    return JsonResponse(
+                        {"error": "Custom sale price is required when enabled."},
+                        status=400
+                    )
+                try:
+                    unit_price = Decimal(str(custom_price_raw))
+                except (ValueError, ArithmeticError):
+                    return JsonResponse(
+                        {"error": "Invalid custom sale price."},
+                        status=400
+                    )
+
+                if unit_price <= 0:
+                    return JsonResponse(
+                        {"error": "Custom sale price must be greater than 0."},
+                        status=400
+                    )
+            else:
+                unit_price = product.rental_price
+                price_adjustment_reason = ""
 
             # If a specific unit is provided,
             # this is a single-unit booking.
@@ -483,6 +514,16 @@ def create_rental_order(request):
                         },
                         status=400
                     )
+
+            total_subtotal += unit_price * quantity
+
+            validated_items.append({
+                "product": product,
+                "quantity": quantity,
+                "unit_id": item_data.get("unit_id"),
+                "unit_price": unit_price,
+                "price_adjustment_reason": price_adjustment_reason,
+            })
 
         # Rental dates
         r_date = data.get("rental_date")
@@ -510,12 +551,12 @@ def create_rental_order(request):
                 coupon = Coupon.objects.get(id=coupon_id)
 
                 is_valid, msg = coupon.is_valid(
-                    data.get("rental_amount")
+                    total_subtotal
                 )
 
                 if is_valid:
                     discount_amount = coupon.calculate_discount(
-                        data.get("rental_amount")
+                        total_subtotal
                     )
 
                     coupon.used_count += 1
@@ -542,16 +583,14 @@ def create_rental_order(request):
                 else "ACTIVE"
             )
 
-        # Create booking
+        # Create booking (using calculated total subtotal)
         booking = RentalBooking.objects.create(
             customer=customer,
             rental_date=r_date,
             return_date=ret_date,
             booking_type=booking_type,
             status=status,
-            rental_amount=Decimal(
-                str(data.get("rental_amount", 0))
-            ),
+            rental_amount=total_subtotal,
             discount_amount=discount_amount,
             coupon=coupon,
             security_deposit=Decimal(
@@ -568,9 +607,7 @@ def create_rental_order(request):
         payments_data = data.get("payments", [])
 
         if not payments_data:
-            sale_amount = Decimal(
-                str(data.get("rental_amount", 0))
-            )
+            sale_amount = total_subtotal - discount_amount
 
             if sale_amount > 0:
                 payments_data = [{
@@ -625,16 +662,12 @@ def create_rental_order(request):
             )
 
         # Create rental items based on quantity
-        for item_data in items_data:
-
-            product = Product.objects.get(
-                id=item_data.get("product_id")
-            )
-
-            unit_id = item_data.get("unit_id")
-            quantity = int(
-                item_data.get("quantity", 1)
-            )
+        for v_item in validated_items:
+            product = v_item["product"]
+            unit_id = v_item["unit_id"]
+            quantity = v_item["quantity"]
+            unit_price = v_item["unit_price"]
+            price_adjustment_reason = v_item["price_adjustment_reason"]
 
             # Specific physical unit
             if unit_id:
@@ -702,7 +735,9 @@ def create_rental_order(request):
                 RentalItem.objects.create(
                     booking=booking,
                     product=product,
-                    unit=unit
+                    unit=unit,
+                    unit_price=unit_price,
+                    price_adjustment_reason=price_adjustment_reason
                 )
 
                 # Mark unit as rented
@@ -782,12 +817,16 @@ def get_all_rental_orders(request):
         for o in orders:
             items = []
             for i in o.items.all():
+                unit_price = float(i.unit_price) if i.unit_price is not None else float(i.product.rental_price)
                 items.append({
                     "product_id": i.product.id,
                     "product_name": i.product.name,
                     "product_code": i.product.code,
                     "unit_id": i.unit.unit_id if i.unit else None,
                     "unit_status": i.unit.status if i.unit else None,
+                    "unit_price": unit_price,
+                    "regular_price": float(i.product.rental_price),
+                    "price_adjustment_reason": i.price_adjustment_reason or "",
                 })
             
             # Use first item for top-level display if needed (backward compatibility)
@@ -2599,6 +2638,9 @@ def pickup_rental_order(request, order_id):
 @transaction.atomic
 def delete_rental_order(request, order_id):
     if request.method == "DELETE":
+        if request.user.is_authenticated and not (request.user.is_staff or request.user.is_superuser):
+            return JsonResponse({"error": "Unauthorized. Admin permissions required."}, status=403)
+
         try:
             booking = RentalBooking.objects.select_for_update().get(id=order_id)
             
@@ -2606,12 +2648,13 @@ def delete_rental_order(request, order_id):
             if booking.status in ['PRE_BOOKED', 'ACTIVE', 'OVERDUE']:
                 items = RentalItem.objects.filter(booking=booking)
                 for item in items:
-                    unit = PhysicalUnit.objects.select_for_update().get(id=item.unit.id)
-                    # For PRE_BOOKED, we already confirmed it doesn't set status to rented,
-                    # but if it was ACTIVE/OVERDUE it was 'rented'.
-                    # Just to be safe, revert to 'available' if it was 'rented' or 'maintenance'
-                    unit.status = 'available'
-                    unit.save()
+                    if item.unit:
+                        unit = PhysicalUnit.objects.select_for_update().get(id=item.unit.id)
+                        # For PRE_BOOKED, we already confirmed it doesn't set status to rented,
+                        # but if it was ACTIVE/OVERDUE it was 'rented'.
+                        # Just to be safe, revert to 'available' if it was 'rented' or 'maintenance'
+                        unit.status = 'available'
+                        unit.save()
                     
             booking.delete()
             return JsonResponse({"message": "Booking deleted successfully."})
@@ -2619,6 +2662,8 @@ def delete_rental_order(request, order_id):
             return JsonResponse({"error": "Rental booking not found."}, status=404)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
+
+    return JsonResponse({"error": "Invalid request method"}, status=405)
 
 # BARCODE ENDPOINTS
 @csrf_exempt
