@@ -580,7 +580,7 @@ def create_rental_order(request):
             status = (
                 "PRE_BOOKED"
                 if booking_type == "PRE_BOOKING"
-                else "ACTIVE"
+                else "COMPLETED"
             )
 
         # Create booking (using calculated total subtotal)
@@ -598,7 +598,7 @@ def create_rental_order(request):
             ),
             collected_at=(
                 timezone.now()
-                if status == "ACTIVE"
+                if status in ["ACTIVE", "COMPLETED"]
                 else None
             )
         )
@@ -741,7 +741,7 @@ def create_rental_order(request):
                 )
 
                 # Mark unit as rented
-                if status == "ACTIVE":
+                if status in ["ACTIVE", "COMPLETED"]:
                     unit.status = "rented"
                     unit.save()
 
@@ -859,7 +859,7 @@ def get_all_rental_orders(request):
                 "returned_at": o.returned_at.isoformat() if o.returned_at else None,
                 "booking_type": o.booking_type,
                 "booking_date": o.booking_date.isoformat() if o.booking_date else None,
-                "status": "OVERDUE" if o.status == 'ACTIVE' and not o.is_returned and o.return_date < today else o.status,
+                "status": "COMPLETED" if o.status in ['ACTIVE', 'OVERDUE', 'RETURNED', 'COMPLETED'] else o.status,
                 "alterations_count": o.alterations.count(),
                 "payments": [{"id": p.id, "amount": float(p.amount), "method": p.payment_method, "reference": p.transaction_reference, "date": p.created_at.isoformat()} for p in o.payments.all()]
             })
@@ -1896,7 +1896,9 @@ def get_dashboard_stats(request):
             })
 
         # Basic Stats
-        total_rental_items = Product.objects.count()
+        products = Product.objects.prefetch_related('units').all()
+        total_rental_items = len(products)
+        low_stock_products = sum(1 for p in products if p.available_stock <= 1)
         active_rentals = RentalBooking.objects.filter(is_returned=False).count()
         overdue_rentals = RentalBooking.objects.filter(is_returned=False, return_date__lt=today).count()
         
@@ -1907,7 +1909,6 @@ def get_dashboard_stats(request):
         total_revenue = float(rental_revenue + accessory_revenue + stitching_revenue)
 
         total_accessories = Accessory.objects.count()
-        low_stock_accessories = Accessory.objects.filter(stock__lt=5).count()
 
         pending_stitching = StitchingOrder.objects.filter(status='pending').count()
         ready_stitching = StitchingOrder.objects.filter(status='ready').count()
@@ -1920,10 +1921,11 @@ def get_dashboard_stats(request):
                 "revenue": float(rental_revenue)
             },
             "accessories": {
-                "total_items": total_accessories,
-                "low_stock_count": low_stock_accessories,
+                "total_items": total_rental_items,
+                "low_stock_count": low_stock_products,
                 "revenue": float(accessory_revenue)
             },
+            "low_stock_count": low_stock_products,
             "stitching": {
                 "pending_count": pending_stitching,
                 "ready_count": ready_stitching,
@@ -2645,7 +2647,7 @@ def delete_rental_order(request, order_id):
             booking = RentalBooking.objects.select_for_update().get(id=order_id)
             
             # Revert PhysicalUnit status if the booking was holding items
-            if booking.status in ['PRE_BOOKED', 'ACTIVE', 'OVERDUE']:
+            if booking.status in ['PRE_BOOKED', 'ACTIVE', 'OVERDUE', 'COMPLETED', 'RETURNED']:
                 items = RentalItem.objects.filter(booking=booking)
                 for item in items:
                     if item.unit:
@@ -2698,7 +2700,7 @@ def get_order_by_barcode(request, barcode):
         today = date.today()
         from .models import RentalBooking, RentalItem
         orders = RentalBooking.objects.filter(
-            status__in=['ACTIVE', 'OVERDUE'],
+            status__in=['ACTIVE', 'OVERDUE', 'COMPLETED', 'RETURNED'],
             items__unit__barcode=barcode
         ).distinct()
         
@@ -2745,7 +2747,7 @@ def get_order_by_barcode(request, barcode):
             "returned_at": o.returned_at.isoformat() if o.returned_at else None,
             "booking_type": o.booking_type,
             "booking_date": o.booking_date.isoformat() if o.booking_date else None,
-            "status": "OVERDUE" if o.status == 'ACTIVE' and not o.is_returned and o.return_date < today else o.status,
+            "status": "COMPLETED" if o.status in ['ACTIVE', 'OVERDUE', 'RETURNED', 'COMPLETED'] else o.status,
             "alterations_count": o.alterations.count(),
             "payments": [{"id": p.id, "amount": float(p.amount), "method": p.payment_method, "reference": p.transaction_reference, "date": p.created_at.isoformat()} for p in o.payments.all()]
         }

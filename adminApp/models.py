@@ -214,6 +214,7 @@ class RentalBooking(models.Model):
         ('PRE_BOOKED', 'Pre-Booked'),
         ('READY_FOR_PICKUP', 'Ready for Pickup'),
         ('ACTIVE', 'Active'),
+        ('COMPLETED', 'Completed'),
         ('RETURNED', 'Returned'),
         ('CANCELLED', 'Cancelled'),
     ]
